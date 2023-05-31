@@ -145,7 +145,7 @@ int colorset[5] = {WHITE, BLUE, GREEN, CYAN, RED};
 #define SL_SSL_CLIENT  "/cert/client.der"
 
 //NEED TO UPDATE THIS FOR IT TO WORK!
-#define DATE                24    /* Current Date */
+#define DATE                31    /* Current Date */
 #define MONTH               5     /* Month 1-12 */
 #define YEAR                2023  /* Current year */
 #define HOUR                1    /* Time - hours */
@@ -271,14 +271,20 @@ typedef struct CLetter{
     int c;
 } CLetter;
 
+typedef struct
+{
+    int i;
+    int j;
+} tuple;
+
 CLetter cbuffer[64];
 int cBufIndex = -1;
 int cx = 0;
 int cy = 70;
 int OLEDColor = WHITE;
 CLetter dots[3][3];
-CLetter keyDots[9];
-CLetter connectedDots[9];
+tuple keyDots[9];
+tuple connectedDots[9];
 int keyDotsLength = 0;
 int connectedDotsLength = 0;
 
@@ -643,16 +649,36 @@ void DisplayButtonPressed(unsigned long value)
     }
 }
 
-void drawDot(CLetter dot) {
-    fillCircle(dot.x, dot.y, DOT_R, dot.c);
+void drawDot(int i, int j) {
+    fillCircle(dots[i][j].x, dots[i][j].y, DOT_R, dots[i][j].c);
 }
 
-void drawCursor(CLetter dot) {
-    drawCircle(dot.x, dot.y, CURSOR_R, RED);
+void drawCursor(int i, int j) {
+    drawCircle(dots[i][j].x, dots[i][j].y, CURSOR_R, RED);
 }
 
-void eraseCursor(CLetter dot) {
-    drawCircle(dot.x, dot.y, CURSOR_R, BLACK);
+void eraseCursor(int i, int j) {
+    drawCircle(dots[i][j].x, dots[i][j].y, CURSOR_R, BLACK);
+}
+
+void connectDots(int cursorI, int cursorJ) {
+    int i;
+    for (i = 0; i < connectedDotsLength; i++) {
+        if (cursorI == connectedDots[i].i && cursorJ == connectedDots[i].j) {
+            return;
+        }
+    }
+
+    // Draw newly connected dots as green
+    dots[cursorI][cursorJ].c = GREEN;
+    drawDot(cursorI, cursorJ);
+
+    // If between the newly drawn dot and the last dot exists an unconnected dot, connect it as well
+
+
+    connectedDots[connectedDotsLength].i = cursorI;
+    connectedDots[connectedDotsLength++].j = cursorJ;
+
 }
 
 //*****************************************************************************
@@ -1494,18 +1520,6 @@ void main() {
 
     // Enable SW2 and SW3 interrupts
     MAP_GPIOIntEnable(button.port, button.pin);
-
-    fillScreen(BLACK);
-
-    int i, j;
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            dots[i][j].c = WHITE;
-            dots[i][j].x = j * 40 + 24;
-            dots[i][j].y = i * 40 + 24;
-            drawDot(dots[i][j]);
-        }
-    }
     prevData = 1;
     currButton = -2;
     prevButton = -1;
@@ -1527,44 +1541,70 @@ void main() {
         ERR_PRINT(lRetVal);
     }
 
+    fillScreen(BLACK);
+
+    int i, j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            dots[i][j].c = WHITE;
+            dots[i][j].x = j * 40 + 24;
+            dots[i][j].y = i * 40 + 24;
+            drawDot(i, j);
+        }
+    }
+    drawCursor(cursorI, cursorJ);
+
     while (1) {
         while(SW_intflag == 0){;}
         int prevCursorI = cursorI;
         int prevCursorJ = cursorJ;
         if (data == UP) {
-            Report("UP Pressed: %d, %d\n\r", cursorI, cursorJ);
             if (cursorI > 0) {
                 cursorI--;
-                Report("UP: %d, %d\n\r", cursorI, cursorJ);
             }
         }
         if (data == DOWN) {
-            Report("DOWN Pressed: %d, %d\n\r", cursorI, cursorJ);
             if (cursorI < 2) {
                 cursorI++;
-                Report("DOWN: %d, %d\n\r", cursorI, cursorJ);
             }
         }
         if (data == LEFT) {
-            Report("LEFT Pressed: %d, %d\n\r", cursorI, cursorJ);
             if (cursorJ > 0) {
                 cursorJ--;
-                Report("LEFT: %d, %d\n\r", cursorI, cursorJ);
             }
         }
         if (data == RIGHT) {
-            Report("RIGHT Pressed: %d, %d\n\r", cursorI, cursorJ);
             if (cursorJ < 2) {
                 cursorJ++;
-                Report("RIGHT: %d, %d\n\r", cursorI, cursorJ);
             }
         }
 
         if (mode == LOCKED || mode == RESET_PWD) {
             if (data == UP || data == DOWN || data == LEFT || data == RIGHT) {
-                Report("Next Cursor: %d, %d\n\r", cursorI, cursorJ);
-                eraseCursor(dots[prevCursorI][prevCursorJ]);
-                drawCursor(dots[cursorI][cursorJ]);
+                eraseCursor(prevCursorI, prevCursorJ);
+                drawCursor(cursorI, cursorJ);
+            }
+
+            if (data == RESET) {
+                cursorI = 0;
+                cursorJ = 0;
+                connectedDotsLength = 0;
+                fillScreen(BLACK);
+
+                int i, j;
+                for (i = 0; i < 3; i++) {
+                    for (j = 0; j < 3; j++) {
+                        dots[i][j].c = WHITE;
+                        dots[i][j].x = j * 40 + 24;
+                        dots[i][j].y = i * 40 + 24;
+                        drawDot(i, j);
+                    }
+                }
+                drawCursor(cursorI, cursorJ);
+            }
+
+            if (data == CONNECT) {
+
             }
         }
         else {
