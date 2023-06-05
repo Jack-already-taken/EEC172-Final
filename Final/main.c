@@ -1,7 +1,7 @@
 //*****************************************************************************
 //
-// Copyright (C) 2014 Texas Instruments Incorporated - http://www.ti.com/
-//
+// Copyright (C) 2014 Texas Instruments Incorporated - http://www.ti.com/ 
+// 
 // 
 //  Redistribution and use in source and binary forms, with or without 
 //  modification, are permitted provided that the following conditions 
@@ -78,6 +78,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "hw_nvic.h"
 #include "hw_memmap.h"
 #include "hw_common_reg.h"
@@ -116,10 +117,9 @@
 #define UNLOCK  LAST
 #define RESET   B0
 
-#define LOCKED     0
-#define UNLOCKED   1
-#define RESET_PWD  2
-#define TEXTING    3
+#define LOCKED 0
+#define UNLOCKED 1
+#define RESET_PWD 2
 
 #define DOT_R 6
 #define CURSOR_R 10
@@ -146,8 +146,8 @@ int colorset[5] = {WHITE, BLUE, GREEN, CYAN, RED};
 #define SL_SSL_CLIENT  "/cert/client.der"
 
 //NEED TO UPDATE THIS FOR IT TO WORK!
-#define DATE                31    /* Current Date */
-#define MONTH               5     /* Month 1-12 */
+#define DATE                2    /* Current Date */
+#define MONTH               6     /* Month 1-12 */
 #define YEAR                2023  /* Current year */
 #define HOUR                1    /* Time - hours */
 #define MINUTE              0    /* Time - minutes */
@@ -281,7 +281,7 @@ typedef struct
 CLetter cbuffer[64];
 int cBufIndex = -1;
 int cx = 0;
-int cy = 16;
+int cy = 70;
 int OLEDColor = WHITE;
 CLetter dots[3][3];
 tuple keyDots[9];
@@ -292,7 +292,7 @@ int connectedDotsLength = 0;
 int cursorI = 0;
 int cursorJ = 0;
 
-int mode = UNLOCKED;
+int mode = LOCKED;
 
 //****************************************************************************
 //                      LOCAL FUNCTION PROTOTYPES
@@ -363,7 +363,7 @@ char firstLetter(unsigned long value)
             break;
         case B1:
             letter = '*';
-            //DisplayColor();
+            DisplayColor();
             break;
         case B2:
             letter = 'a';
@@ -415,7 +415,6 @@ char firstLetter(unsigned long value)
             break;
         default:
             Report("error not valid. \n\r", letter);
-            letter = '/';
             break;
     }
     return letter;
@@ -434,7 +433,7 @@ char DisplayNextLetter(char l)
             break;
         case '*':
             letter = '*';
-            //DisplayColor();
+            DisplayColor();
             break;
         case 'a':
             letter = 'b';
@@ -676,11 +675,85 @@ void connectDots(int cursorI, int cursorJ) {
     drawDot(cursorI, cursorJ);
 
     // If between the newly drawn dot and the last dot exists an unconnected dot, connect it as well
+    if (connectedDotsLength > 0) {
+        int prevI = connectedDots[connectedDotsLength-1].i;
+        int prevJ = connectedDots[connectedDotsLength-1].j;
+        if (abs(cursorI - prevI) == 2 && cursorJ == prevJ) {
+            connectDots(1, cursorJ);
+        }
+        if (abs(cursorJ - prevJ) == 2 && cursorI == prevI) {
+            connectDots(cursorI, 1);
+        }
+        if (abs(cursorI - prevI) == 2 && abs(cursorJ - prevJ) == 2) {
+            connectDots(1, 1);
+        }
+    }
 
 
     connectedDots[connectedDotsLength].i = cursorI;
     connectedDots[connectedDotsLength++].j = cursorJ;
 
+}
+
+void drawLines(int cursorI, int cursorJ, int prevI, int prevJ) {
+    int x0 = dots[prevI][prevJ].x;
+    int y0 = dots[prevI][prevJ].y;
+    int x1 = dots[cursorI][cursorJ].x;
+    int y1 = dots[cursorI][cursorJ].y;
+
+    drawLine(x0, y0, x1, y1, GREEN);
+    int i;
+    if (abs(y1 - y0) > abs(x1 - x0)) {
+        for (i = 1; i < 4; i++) {
+            drawLine(x0+i, y0, x1+i, y1, GREEN);
+            drawLine(x0-i, y0, x1-i, y1, GREEN);
+        }
+    }
+    else {
+        for (i = 1; i < 4; i++) {
+            drawLine(x0, y0+i, x1, y1+i, GREEN);
+            drawLine(x0, y0-i, x1, y1-i, GREEN);
+        }
+    }
+}
+
+int patternMatch() {
+    if (connectedDotsLength != keyDotsLength) {
+        return 0;
+    }
+    int i;
+    for (i = 0; i < keyDotsLength; i++) {
+        if (connectedDots[i].i != keyDots[i].i || connectedDots[i].j != keyDots[i].j) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void writePattern() {
+    keyDotsLength = connectedDotsLength;
+    int i;
+    for (i = 0; i < connectedDotsLength; i++) {
+        keyDots[i] = connectedDots[i];
+    }
+}
+
+void showLockedInterface() {
+    cursorI = 0;
+    cursorJ = 0;
+    connectedDotsLength = 0;
+    fillScreen(BLACK);
+
+    int i, j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            dots[i][j].c = WHITE;
+            dots[i][j].x = j * 40 + 24;
+            dots[i][j].y = i * 40 + 24;
+            drawDot(i, j);
+        }
+    }
+    drawCursor(cursorI, cursorJ);
 }
 
 //*****************************************************************************
@@ -871,12 +944,12 @@ void SimpleLinkSockEventHandler(SlSockEvent_t *pSock) {
     switch( pSock->Event ) {
         case SL_SOCKET_TX_FAILED_EVENT:
             switch( pSock->socketAsyncEvent.SockTxFailData.status) {
-                case SL_ECLOSE:
+                case SL_ECLOSE: 
                     UART_PRINT("[SOCK ERROR] - close socket (%d) operation "
-                                "failed to transmit all queued packets\n\n",
+                                "failed to transmit all queued packets\n\n", 
                                     pSock->socketAsyncEvent.SockTxFailData.sd);
                     break;
-                default:
+                default: 
                     UART_PRINT("[SOCK ERROR] - TX FAILED  :  socket %d , reason "
                                 "(%d) \n\n",
                                 pSock->socketAsyncEvent.SockTxFailData.sd, pSock->socketAsyncEvent.SockTxFailData.status);
@@ -945,19 +1018,19 @@ static long ConfigureSimpleLinkToDefaultState() {
     lMode = sl_Start(0, 0, 0);
     ASSERT_ON_ERROR(lMode);
 
-    // If the device is not in station-mode, try configuring it in station-mode
+    // If the device is not in station-mode, try configuring it in station-mode 
     if (ROLE_STA != lMode) {
         if (ROLE_AP == lMode) {
-            // If the device is in AP mode, we need to wait for this event
-            // before doing anything
+            // If the device is in AP mode, we need to wait for this event 
+            // before doing anything 
             while(!IS_IP_ACQUIRED(g_ulStatus)) {
 #ifndef SL_PLATFORM_MULTI_THREADED
-              _SlNonOsMainLoopTask();
+              _SlNonOsMainLoopTask(); 
 #endif
             }
         }
 
-        // Switch to STA role and restart
+        // Switch to STA role and restart 
         lRetVal = sl_WlanSetMode(ROLE_STA);
         ASSERT_ON_ERROR(lRetVal);
 
@@ -967,20 +1040,20 @@ static long ConfigureSimpleLinkToDefaultState() {
         lRetVal = sl_Start(0, 0, 0);
         ASSERT_ON_ERROR(lRetVal);
 
-        // Check if the device is in station again
+        // Check if the device is in station again 
         if (ROLE_STA != lRetVal) {
-            // We don't want to proceed if the device is not coming up in STA-mode
+            // We don't want to proceed if the device is not coming up in STA-mode 
             return DEVICE_NOT_IN_STATION_MODE;
         }
     }
-
+    
     // Get the device's version-information
     ucConfigOpt = SL_DEVICE_GENERAL_VERSION;
     ucConfigLen = sizeof(ver);
-    lRetVal = sl_DevGet(SL_DEVICE_GENERAL_CONFIGURATION, &ucConfigOpt,
+    lRetVal = sl_DevGet(SL_DEVICE_GENERAL_CONFIGURATION, &ucConfigOpt, 
                                 &ucConfigLen, (unsigned char *)(&ver));
     ASSERT_ON_ERROR(lRetVal);
-
+    
     UART_PRINT("Host Driver Version: %s\n\r",SL_DRIVER_VERSION);
     UART_PRINT("Build Version %d.%d.%d.%d.31.%d.%d.%d.%d.%d.%d.%d.%d\n\r",
     ver.NwpVersion[0],ver.NwpVersion[1],ver.NwpVersion[2],ver.NwpVersion[3],
@@ -989,9 +1062,9 @@ static long ConfigureSimpleLinkToDefaultState() {
     ver.ChipFwAndPhyVersion.PhyVersion[0],ver.ChipFwAndPhyVersion.PhyVersion[1],
     ver.ChipFwAndPhyVersion.PhyVersion[2],ver.ChipFwAndPhyVersion.PhyVersion[3]);
 
-    // Set connection policy to Auto + SmartConfig
+    // Set connection policy to Auto + SmartConfig 
     //      (Device's default connection policy)
-    lRetVal = sl_WlanPolicySet(SL_POLICY_CONNECTION,
+    lRetVal = sl_WlanPolicySet(SL_POLICY_CONNECTION, 
                                 SL_CONNECTION_POLICY(1, 0, 0, 0, 1), NULL, 0);
     ASSERT_ON_ERROR(lRetVal);
 
@@ -999,12 +1072,12 @@ static long ConfigureSimpleLinkToDefaultState() {
     lRetVal = sl_WlanProfileDel(0xFF);
     ASSERT_ON_ERROR(lRetVal);
 
-
+    
 
     //
     // Device in station-mode. Disconnect previous connection if any
     // The function returns 0 if 'Disconnected done', negative number if already
-    // disconnected Wait for 'disconnection' event if 0 is returned, Ignore
+    // disconnected Wait for 'disconnection' event if 0 is returned, Ignore 
     // other return-codes
     //
     lRetVal = sl_WlanDisconnect();
@@ -1012,7 +1085,7 @@ static long ConfigureSimpleLinkToDefaultState() {
         // Wait
         while(IS_CONNECTED(g_ulStatus)) {
 #ifndef SL_PLATFORM_MULTI_THREADED
-              _SlNonOsMainLoopTask();
+              _SlNonOsMainLoopTask(); 
 #endif
         }
     }
@@ -1029,7 +1102,7 @@ static long ConfigureSimpleLinkToDefaultState() {
     // Set Tx power level for station mode
     // Number between 0-15, as dB offset from max power - 0 will set max power
     ucPower = 0;
-    lRetVal = sl_WlanSet(SL_WLAN_CFG_GENERAL_PARAM_ID,
+    lRetVal = sl_WlanSet(SL_WLAN_CFG_GENERAL_PARAM_ID, 
             WLAN_GENERAL_PARAM_OPT_STA_TX_POWER, 1, (unsigned char *)&ucPower);
     ASSERT_ON_ERROR(lRetVal);
 
@@ -1467,17 +1540,17 @@ void clearLastChar(void)
 void clearMessage(void)
 {
     int i;
-    for(i = 16; i < 128; i++)
+    for(i = 64; i < 128; i++)
     {
         drawFastHLine(0, i, 128, BLACK);
     }
     cBufIndex = -1;
     cx = 0;
-    cy = 16;
+    cy = 70;
 }
 //*****************************************************************************
 //
-//! Main
+//! Main 
 //!
 //! \param  none
 //!
@@ -1528,7 +1601,7 @@ void main() {
     char letter;
 
     UART_PRINT("Hello world!\n\r");
-/*
+
     //Connect the CC3200 to the local access point
     lRetVal = connectToAccessPoint();
     //Set time so that encryption can be used
@@ -1542,30 +1615,12 @@ void main() {
     if(lRetVal < 0) {
         ERR_PRINT(lRetVal);
     }
-*/
-    fillScreen(BLACK);
 
-    int i, j;
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            dots[i][j].c = WHITE;
-            dots[i][j].x = j * 40 + 24;
-            dots[i][j].y = i * 40 + 24;
-            drawDot(i, j);
-        }
-    }
-    drawCursor(cursorI, cursorJ);
+    showLockedInterface();
 
     while (1) {
         while(SW_intflag == 0){;}
-
-        if(mode == LOCKED)
-        {
-            fillScreen(BLACK);
-            Outstr("Yellow");
-            if(data == B1)
-                mode = UNLOCKED;
-        }
+        SW_intflag = 0;
         int prevCursorI = cursorI;
         int prevCursorJ = cursorJ;
         if (data == UP) {
@@ -1596,169 +1651,43 @@ void main() {
             }
 
             if (data == RESET) {
-                cursorI = 0;
-                cursorJ = 0;
-                connectedDotsLength = 0;
-                fillScreen(BLACK);
-
-                int i, j;
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < 3; j++) {
-                        dots[i][j].c = WHITE;
-                        dots[i][j].x = j * 40 + 24;
-                        dots[i][j].y = i * 40 + 24;
-                        drawDot(i, j);
-                    }
-                }
-                drawCursor(cursorI, cursorJ);
+                showLockedInterface();
             }
 
             if (data == CONNECT) {
+                int prevI, prevJ;
+                if (connectedDotsLength > 0) {
+                    prevI = connectedDots[connectedDotsLength-1].i;
+                    prevJ = connectedDots[connectedDotsLength-1].j;
+                }
+                int prevLength = connectedDotsLength;
+                connectDots(cursorI, cursorJ);
+                if (connectedDotsLength > 1 && connectedDotsLength > prevLength) {
+                    drawLines(cursorI, cursorJ, prevI, prevJ);
+                }
+            }
 
+            if (data == UNLOCK) {
+                if (mode == LOCKED) {
+                    if (patternMatch()){
+                        mode = UNLOCKED;
+                        fillScreen(BLACK);
+                        Outstr("UNLOCKED");
+
+                    }
+                    else {
+                        fillScreen(BLACK);
+                        Outstr("UNLOCK FAILED");
+                        setCursor(0, 0);
+                        delay(100);
+                        showLockedInterface();
+                    }
+                }
             }
         }
         else {
-            if(mode == TEXTING)
-            {
-                fillScreen(BLACK);
-                setCursor(0,0);
-                Outstr("Press 1 for Menu");
-                setCursor(0,8);
-                Outstr("Write Message:");
 
-                while (1) {
-                     while(SW_intflag == 0){;}
-                     DisplayButtonPressed(data);
-                     prevData = data;
-                     setCursor(cx, cy);
-                     letter = firstLetter(prevData);
-                     SW_intflag = 0;
-
-                     if (prevData != B0 && prevData != B1 && prevData != MUTE && prevData != LAST && letter != '/') {
-                         cbuffer[++cBufIndex].l = letter;
-                         cbuffer[cBufIndex].x = cx;
-                         cbuffer[cBufIndex].y = cy;
-                         //cbuffer[cBufIndex].c = color;
-                         cx += 6;
-
-                         uint64_t timeInterval = 0;
-                         while (timeInterval++ < 3500000) {
-                             if (SW_intflag) {
-                                 // Determines if its the same button
-                                 if(prevData == data)
-                                 {
-                                     sameButton = 1;
-                                     currButton++;
-                                 }
-                                 else
-                                     sameButton = 0;
-
-                                 // Displays Letter
-                                 if(sameButton)
-                                 {
-                                     clearLastChar();
-                                     setCursor(cbuffer[cBufIndex].x, cbuffer[cBufIndex].y);
-                                     letter = DisplayNextLetter(letter);
-                                     cbuffer[cBufIndex].l = letter;
-
-                                     timeInterval = 0;
-                                 }
-                                 else
-                                 {
-                                     SW_intflag = 1;
-                                     break;
-                                 }
-                                 SW_intflag = 0;
-                             }
-                         }
-                     }
-                     // Returns the Button Selected if there are Consecutive Presses
-                     if(letter != '*')
-                         Report("letter %c selected \n\r", letter);
-
-                     if (letter == ' ') {
-                         cbuffer[++cBufIndex].l = letter;
-                         cbuffer[cBufIndex].x = cx;
-                         cbuffer[cBufIndex].y = cy;
-                         //cbuffer[cBufIndex].c = color;
-                         cx += 6;
-                     }
-                     // Prints full String
-                     if (letter == '+') {
-
-                         Report("String: %s \n\r", buffer);
-//                       updateEmailMessage();
-                         bufIndex = 0;
-//                       http_post(lRetVal);
-                         // Resets Buffer
-                         int i;
-                         for (i = 0; i < 64; i++) {
-                             buffer[i] = '\0';
-                         }
-                         clearMessage();
-                     } // Deletes Last Letter
-                     else if (letter == '-') {
-                         if (bufIndex > 0) {
-                             clearLastChar();
-                             cx -= 6;
-                             setCursor(cx, cy);
-                             cBufIndex -= 1;
-                             buffer[--bufIndex] = '\0';
-                         }
-                     } // Sets New Letter
-                     else {
-                         if(letter != '/' )
-                         {
-                             if(letter != '*')
-                             {
-                                 buffer[bufIndex++] = letter;
-                             }
-                         }
-                     }
-                     if(letter == '*')
-                     {
-                         for (i = 0; i < 64; i++) {
-                             buffer[i] = '\0';
-                         }
-                         cBufIndex = -1;
-                         cx = 0;
-                         cy = 16;
-                         mode = UNLOCKED;
-                         break;
-                     }
-                }
-            }
-            if(mode == UNLOCKED)
-            {
-                fillScreen(BLACK);
-                setCursor(0,0);
-                Outstr("1 : Lock");
-                setCursor(0,10);
-                Outstr("2 : Reset Password");
-                setCursor(0,20);
-                Outstr("3 : Send Email");
-                while(1)
-                {
-                    while(SW_intflag == 0){;}
-                    if(data == B1)
-                    {
-                        mode = LOCKED;
-                        break;
-                    }else if(data == B2)
-                    {
-                        mode = RESET_PWD;
-                        break;
-                    }else if(data == B3)
-                    {
-                        mode = TEXTING;
-                        break;
-                    }
-                    SW_intflag = 0;
-               }
-            }
         }
-
-        SW_intflag = 0;
 
 
     }
