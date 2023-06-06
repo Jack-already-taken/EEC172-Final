@@ -1559,7 +1559,7 @@ void main() {
     int saved = 0;
 
     while (1) {
-        while(SW_intflag == 0){;}
+        while(SW_intflag == 0 && mode != TEXTING){;}
 
         int prevCursorI = cursorI;
         int prevCursorJ = cursorJ;
@@ -1716,7 +1716,11 @@ void main() {
                      }
                      if(letter == '*')
                      {
-                         if(bufIndex == 0) break;
+                         if(bufIndex == 0 || bufIndex == -1)
+                         {
+                             mode = UNLOCKED;
+                             break;
+                         }
                          fillScreen(BLACK);
                          setCursor(0,0);
                          Outstr("Do you wish to");
