@@ -1716,6 +1716,7 @@ void main() {
                      }
                      if(letter == '*')
                      {
+                         if(bufIndex == 0) break;
                          fillScreen(BLACK);
                          setCursor(0,0);
                          Outstr("Do you wish to");
