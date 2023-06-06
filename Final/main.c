@@ -78,6 +78,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "hw_nvic.h"
 #include "hw_memmap.h"
 #include "hw_common_reg.h"
@@ -116,9 +117,10 @@
 #define UNLOCK  LAST
 #define RESET   B0
 
-#define LOCKED 0
-#define UNLOCKED 1
-#define RESET_PWD 2
+#define LOCKED      0
+#define UNLOCKED    1
+#define RESET_PWD   2
+#define TEXTING     3
 
 #define DOT_R 6
 #define CURSOR_R 10
@@ -145,8 +147,8 @@ int colorset[5] = {WHITE, BLUE, GREEN, CYAN, RED};
 #define SL_SSL_CLIENT  "/cert/client.der"
 
 //NEED TO UPDATE THIS FOR IT TO WORK!
-#define DATE                31    /* Current Date */
-#define MONTH               5     /* Month 1-12 */
+#define DATE                2    /* Current Date */
+#define MONTH               6     /* Month 1-12 */
 #define YEAR                2023  /* Current year */
 #define HOUR                1    /* Time - hours */
 #define MINUTE              0    /* Time - minutes */
@@ -250,6 +252,7 @@ volatile long prevButton;
 volatile long prevData;
 int sameButton = 0;
 int EnterMessage = 0;
+int unlockFailedCount = 0;
 
 unsigned long data = 0;
 int track = 0;
@@ -280,7 +283,7 @@ typedef struct
 CLetter cbuffer[64];
 int cBufIndex = -1;
 int cx = 0;
-int cy = 70;
+int cy = 16;
 int OLEDColor = WHITE;
 CLetter dots[3][3];
 tuple keyDots[9];
@@ -362,7 +365,7 @@ char firstLetter(unsigned long value)
             break;
         case B1:
             letter = '*';
-            DisplayColor();
+            //DisplayColor();
             break;
         case B2:
             letter = 'a';
@@ -414,6 +417,7 @@ char firstLetter(unsigned long value)
             break;
         default:
             Report("error not valid. \n\r", letter);
+            letter = '/';
             break;
     }
     return letter;
@@ -432,7 +436,7 @@ char DisplayNextLetter(char l)
             break;
         case '*':
             letter = '*';
-            DisplayColor();
+            //DisplayColor();
             break;
         case 'a':
             letter = 'b';
@@ -674,12 +678,122 @@ void connectDots(int cursorI, int cursorJ) {
     drawDot(cursorI, cursorJ);
 
     // If between the newly drawn dot and the last dot exists an unconnected dot, connect it as well
+    if (connectedDotsLength > 0) {
+        int prevI = connectedDots[connectedDotsLength-1].i;
+        int prevJ = connectedDots[connectedDotsLength-1].j;
+        if (abs(cursorI - prevI) == 2 && cursorJ == prevJ) {
+            connectDots(1, cursorJ);
+        }
+        if (abs(cursorJ - prevJ) == 2 && cursorI == prevI) {
+            connectDots(cursorI, 1);
+        }
+        if (abs(cursorI - prevI) == 2 && abs(cursorJ - prevJ) == 2) {
+            connectDots(1, 1);
+        }
+    }
 
 
     connectedDots[connectedDotsLength].i = cursorI;
     connectedDots[connectedDotsLength++].j = cursorJ;
 
 }
+
+void drawLines(int cursorI, int cursorJ, int prevI, int prevJ) {
+    int x0 = dots[prevI][prevJ].x;
+    int y0 = dots[prevI][prevJ].y;
+    int x1 = dots[cursorI][cursorJ].x;
+    int y1 = dots[cursorI][cursorJ].y;
+
+    drawLine(x0, y0, x1, y1, GREEN);
+    int i;
+    if (abs(y1 - y0) > abs(x1 - x0)) {
+        for (i = 1; i < 4; i++) {
+            drawLine(x0+i, y0, x1+i, y1, GREEN);
+            drawLine(x0-i, y0, x1-i, y1, GREEN);
+        }
+    }
+    else {
+        for (i = 1; i < 4; i++) {
+            drawLine(x0, y0+i, x1, y1+i, GREEN);
+            drawLine(x0, y0-i, x1, y1-i, GREEN);
+        }
+    }
+}
+
+int patternMatch() {
+    if (connectedDotsLength != keyDotsLength) {
+        return 0;
+    }
+    int i;
+    for (i = 0; i < keyDotsLength; i++) {
+        if (connectedDots[i].i != keyDots[i].i || connectedDots[i].j != keyDots[i].j) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void writePattern() {
+    keyDotsLength = connectedDotsLength;
+    int i;
+    for (i = 0; i < connectedDotsLength; i++) {
+        keyDots[i].i = connectedDots[i].i;
+        keyDots[i].j = connectedDots[i].j;
+    }
+    connectedDotsLength = 0;
+}
+
+void initializeKey() {
+    keyDotsLength = 5;
+    keyDots[0].i = 0;
+    keyDots[0].j = 0;
+    keyDots[1].i = 0;
+    keyDots[1].j = 1;
+    keyDots[2].i = 0;
+    keyDots[2].j = 2;
+    keyDots[3].i = 1;
+    keyDots[3].j = 2;
+    keyDots[4].i = 2;
+    keyDots[4].j = 2;
+}
+
+void showLockedInterface() {
+    cursorI = 0;
+    cursorJ = 0;
+    connectedDotsLength = 0;
+    fillScreen(BLACK);
+
+    int i, j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            dots[i][j].c = WHITE;
+            dots[i][j].x = j * 40 + 24;
+            dots[i][j].y = i * 40 + 24;
+            drawDot(i, j);
+        }
+    }
+    drawCursor(cursorI, cursorJ);
+}
+
+void showUnlockedInterface() {
+    fillScreen(BLACK);
+    setCursor(0,0);
+    Outstr("1 : Lock");
+    setCursor(0,10);
+    Outstr("2 : Reset Password");
+    setCursor(0,20);
+    Outstr("3 : Send Email");
+}
+
+void showTextingInterface() {
+    fillScreen(BLACK);
+    setCursor(0,0);
+    Outstr("Press 1 for Menu");
+    setCursor(0,8);
+    Outstr("Write Message:");
+}
+
+
 
 //*****************************************************************************
 //
@@ -1424,6 +1538,31 @@ void updateEmailMessage() {
     strcat(emailMessage, DATA_END);
 }
 
+void sendNotification(const char* message) {
+    int i;
+    for (i = 0; i < 256; i++) {
+        emailMessage[i] = '\0';
+    }
+    strcat(emailMessage, DATA_START);
+    strcat(emailMessage, message);
+    strcat(emailMessage, DATA_END);
+}
+
+void sendUnlockFailed() {
+    int i;
+    char num[5];
+    unlockFailedCount++;
+    for (i = 0; i < 256; i++) {
+        emailMessage[i] = '\0';
+    }
+    ltoa(unlockFailedCount, num);
+    strcat(emailMessage, DATA_START);
+    strcat(emailMessage, "Unlock authentication has failed for ");
+    strcat(emailMessage, num);
+    strcat(emailMessage, " times");
+    strcat(emailMessage, DATA_END);
+}
+
 static void SPI_Communication(void){
 
     //
@@ -1465,13 +1604,13 @@ void clearLastChar(void)
 void clearMessage(void)
 {
     int i;
-    for(i = 64; i < 128; i++)
+    for(i = 16; i < 128; i++)
     {
         drawFastHLine(0, i, 128, BLACK);
     }
     cBufIndex = -1;
     cx = 0;
-    cy = 70;
+    cy = 16;
 }
 //*****************************************************************************
 //
@@ -1541,21 +1680,14 @@ void main() {
         ERR_PRINT(lRetVal);
     }
 
-    fillScreen(BLACK);
+    initializeKey();
+    showLockedInterface();
 
-    int i, j;
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            dots[i][j].c = WHITE;
-            dots[i][j].x = j * 40 + 24;
-            dots[i][j].y = i * 40 + 24;
-            drawDot(i, j);
-        }
-    }
-    drawCursor(cursorI, cursorJ);
+    int saved = 0;
 
     while (1) {
-        while(SW_intflag == 0){;}
+        while(SW_intflag == 0 && mode != TEXTING){;}
+        SW_intflag = 0;
         int prevCursorI = cursorI;
         int prevCursorJ = cursorJ;
         if (data == UP) {
@@ -1586,32 +1718,229 @@ void main() {
             }
 
             if (data == RESET) {
-                cursorI = 0;
-                cursorJ = 0;
-                connectedDotsLength = 0;
-                fillScreen(BLACK);
-
-                int i, j;
-                for (i = 0; i < 3; i++) {
-                    for (j = 0; j < 3; j++) {
-                        dots[i][j].c = WHITE;
-                        dots[i][j].x = j * 40 + 24;
-                        dots[i][j].y = i * 40 + 24;
-                        drawDot(i, j);
-                    }
-                }
-                drawCursor(cursorI, cursorJ);
+                showLockedInterface();
             }
 
             if (data == CONNECT) {
+                int prevI, prevJ;
+                if (connectedDotsLength > 0) {
+                    prevI = connectedDots[connectedDotsLength-1].i;
+                    prevJ = connectedDots[connectedDotsLength-1].j;
+                }
+                int prevLength = connectedDotsLength;
+                connectDots(cursorI, cursorJ);
+                if (connectedDotsLength > 1 && connectedDotsLength > prevLength) {
+                    drawLines(cursorI, cursorJ, prevI, prevJ);
+                }
+            }
 
+            if (data == UNLOCK) {
+                if (mode == LOCKED) {
+                    if (patternMatch()){
+                        mode = UNLOCKED;
+                        showUnlockedInterface();
+                        sendNotification("You have successfully logged in");
+                        http_post(lRetVal);
+                        unlockFailedCount = 0;
+                    }
+                    else {
+                        fillScreen(BLACK);
+                        setCursor(0, 0);
+                        Outstr("UNLOCK FAILED");
+                        delay(100);
+                        sendUnlockFailed();
+                        http_post(lRetVal);
+                        showLockedInterface();
+
+                    }
+                }
+                else {
+                    writePattern();
+                    mode = UNLOCKED;
+                    showUnlockedInterface();
+                    sendNotification("Password reset successful");
+                    http_post(lRetVal);
+                }
+            }
+
+            if (data == LOCK) {
+                if (mode == RESET_PWD) {
+                    connectedDotsLength = 0;
+                    mode = UNLOCKED;
+                    showUnlockedInterface();
+                }
             }
         }
-        else {
+        if(mode == TEXTING)
+        {
+            if (saved == 1) {
+                setCursor(0, 16);
+                Outstr(buffer);
+                saved = 0;
+            }
+            while (1) {
+                 while(SW_intflag == 0){;}
+                 DisplayButtonPressed(data);
+                 prevData = data;
+                 setCursor(cx, cy);
+                 letter = firstLetter(prevData);
+                 SW_intflag = 0;
 
+                 if (prevData != B0 && prevData != B1 && prevData != MUTE && prevData != LAST && letter != '/') {
+                     cbuffer[++cBufIndex].l = letter;
+                     cbuffer[cBufIndex].x = cx;
+                     cbuffer[cBufIndex].y = cy;
+                     //cbuffer[cBufIndex].c = color;
+                     cx += 6;
+
+                     uint64_t timeInterval = 0;
+                     while (timeInterval++ < 3500000) {
+                         if (SW_intflag) {
+                             // Determines if its the same button
+                             if(prevData == data)
+                             {
+                                 sameButton = 1;
+                                 currButton++;
+                             }
+                             else
+                                 sameButton = 0;
+
+                             // Displays Letter
+                             if(sameButton)
+                             {
+                                 clearLastChar();
+                                 setCursor(cbuffer[cBufIndex].x, cbuffer[cBufIndex].y);
+                                 letter = DisplayNextLetter(letter);
+                                 cbuffer[cBufIndex].l = letter;
+
+                                 timeInterval = 0;
+                             }
+                             else
+                             {
+                                 SW_intflag = 1;
+                                 break;
+                             }
+                             SW_intflag = 0;
+                         }
+                     }
+                 }
+                 // Returns the Button Selected if there are Consecutive Presses
+                 if(letter != '*')
+                     Report("letter %c selected \n\r", letter);
+
+                 if (letter == ' ') {
+                     cbuffer[++cBufIndex].l = letter;
+                     cbuffer[cBufIndex].x = cx;
+                     cbuffer[cBufIndex].y = cy;
+                     //cbuffer[cBufIndex].c = color;
+                     cx += 6;
+                 }
+                 // Prints full String
+                 if (letter == '+') {
+
+                     Report("String: %s \n\r", buffer);
+                     updateEmailMessage();
+                     bufIndex = 0;
+                     http_post(lRetVal);
+                     // Resets Buffer
+                     int i;
+                     for (i = 0; i < 64; i++) {
+                         buffer[i] = '\0';
+                     }
+                     clearMessage();
+                 } // Deletes Last Letter
+                 else if (letter == '-') {
+                     if (bufIndex > 0) {
+                         clearLastChar();
+                         cx -= 6;
+                         setCursor(cx, cy);
+                         cBufIndex -= 1;
+                         buffer[--bufIndex] = '\0';
+                     }
+                 } // Sets New Letter
+                 else {
+                     if(letter != '/' )
+                     {
+                         if(letter != '*')
+                         {
+                             buffer[bufIndex++] = letter;
+                         }
+                     }
+                 }
+                 if(letter == '*')
+                 {
+                     if(bufIndex == 0) {
+                         mode = UNLOCKED;
+                         showUnlockedInterface();
+                         break;
+                     }
+                     fillScreen(BLACK);
+                     setCursor(0,0);
+                     Outstr("Do you wish to");
+                     setCursor(0,8);
+                     Outstr("save this message?");
+                     setCursor(0,16);
+                     Outstr("1: Yes");
+                     setCursor(0,24);
+                     Outstr("2: No");
+                     while(1)
+                     {
+                         while(SW_intflag == 0){;}
+                         if(data == B2)
+                         {
+                             int i;
+                             for (i = 0; i < 64; i++) {
+                                 buffer[i] = '\0';
+                             }
+                             cBufIndex = -1;
+                             cx = 0;
+                             cy = 16;
+                             mode = UNLOCKED;
+                             showUnlockedInterface();
+                             saved = 0;
+                             break;
+                         }else if(data == B1)
+                         {
+                             saved = 1;
+                             mode = UNLOCKED;
+                             showUnlockedInterface();
+                             break;
+                         }
+                     }
+                     break;
+                 }
+            }
         }
+        else if(mode == UNLOCKED)
+        {
 
-        SW_intflag = 0;
+            if(data == B1)
+            {
+                mode = LOCKED;
+                showLockedInterface();
+                sendNotification("You have logged out of the system");
+                http_post(lRetVal);
+            }else if(data == B2)
+            {
+                mode = RESET_PWD;
+                fillScreen(BLACK);
+                setCursor(0,0);
+                Outstr("RESET YOUR PASSWORD");
+                setCursor(0,10);
+                Outstr("Enter your new password by connecting dots");
+                setCursor(0,20);
+                Outstr("Press LAST to save password");
+                setCursor(0,30);
+                Outstr("Press MUTE to exit");
+                delay(150);
+                showLockedInterface();
+            }else if(data == B3)
+            {
+                mode = TEXTING;
+                showTextingInterface();
+            }
+            SW_intflag = 0;
+        }
 
 
     }
