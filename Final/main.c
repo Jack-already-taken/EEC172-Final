@@ -1528,7 +1528,7 @@ void main() {
     char letter;
 
     UART_PRINT("Hello world!\n\r");
-/*
+
     //Connect the CC3200 to the local access point
     lRetVal = connectToAccessPoint();
     //Set time so that encryption can be used
@@ -1542,7 +1542,7 @@ void main() {
     if(lRetVal < 0) {
         ERR_PRINT(lRetVal);
     }
-*/
+
     fillScreen(BLACK);
 
     int i, j;
@@ -1556,16 +1556,11 @@ void main() {
     }
     drawCursor(cursorI, cursorJ);
 
+    int saved = 0;
+
     while (1) {
         while(SW_intflag == 0){;}
 
-        if(mode == LOCKED)
-        {
-            fillScreen(BLACK);
-            Outstr("Yellow");
-            if(data == B1)
-                mode = UNLOCKED;
-        }
         int prevCursorI = cursorI;
         int prevCursorJ = cursorJ;
         if (data == UP) {
@@ -1625,7 +1620,12 @@ void main() {
                 Outstr("Press 1 for Menu");
                 setCursor(0,8);
                 Outstr("Write Message:");
-
+                if(saved  == 1)
+                {
+                    setCursor(0, 16);
+                    Outstr(buffer);
+                    saved = 0;
+                }
                 while (1) {
                      while(SW_intflag == 0){;}
                      DisplayButtonPressed(data);
@@ -1638,7 +1638,6 @@ void main() {
                          cbuffer[++cBufIndex].l = letter;
                          cbuffer[cBufIndex].x = cx;
                          cbuffer[cBufIndex].y = cy;
-                         //cbuffer[cBufIndex].c = color;
                          cx += 6;
 
                          uint64_t timeInterval = 0;
@@ -1687,9 +1686,9 @@ void main() {
                      if (letter == '+') {
 
                          Report("String: %s \n\r", buffer);
-//                       updateEmailMessage();
+                         updateEmailMessage();
                          bufIndex = 0;
-//                       http_post(lRetVal);
+                         http_post(lRetVal);
                          // Resets Buffer
                          int i;
                          for (i = 0; i < 64; i++) {
@@ -1717,13 +1716,36 @@ void main() {
                      }
                      if(letter == '*')
                      {
-                         for (i = 0; i < 64; i++) {
-                             buffer[i] = '\0';
+                         fillScreen(BLACK);
+                         setCursor(0,0);
+                         Outstr("Do you wish to");
+                         setCursor(0,8);
+                         Outstr("save this message?");
+                         setCursor(0,16);
+                         Outstr("1: Yes");
+                         setCursor(0,24);
+                         Outstr("2: No");
+                         while(1)
+                         {
+                             while(SW_intflag == 0){;}
+                             if(data == B2)
+                             {
+                                 for (i = 0; i < 64; i++) {
+                                     buffer[i] = '\0';
+                                 }
+                                 cBufIndex = -1;
+                                 cx = 0;
+                                 cy = 16;
+                                 mode = UNLOCKED;
+                                 saved = 0;
+                                 break;
+                             }else if(data == B1)
+                             {
+                                 saved = 1;
+                                 mode = UNLOCKED;
+                                 break;
+                             }
                          }
-                         cBufIndex = -1;
-                         cx = 0;
-                         cy = 16;
-                         mode = UNLOCKED;
                          break;
                      }
                 }
