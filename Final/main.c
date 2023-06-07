@@ -147,7 +147,7 @@ int colorset[5] = {WHITE, BLUE, GREEN, CYAN, RED};
 #define SL_SSL_CLIENT  "/cert/client.der"
 
 //NEED TO UPDATE THIS FOR IT TO WORK!
-#define DATE                2    /* Current Date */
+#define DATE                7    /* Current Date */
 #define MONTH               6     /* Month 1-12 */
 #define YEAR                2023  /* Current year */
 #define HOUR                1    /* Time - hours */
@@ -1926,13 +1926,17 @@ void main() {
                 fillScreen(BLACK);
                 setCursor(0,0);
                 Outstr("RESET YOUR PASSWORD");
-                setCursor(0,10);
-                Outstr("Enter your new password by connecting dots");
-                setCursor(0,20);
-                Outstr("Press LAST to save password");
-                setCursor(0,30);
+                setCursor(0,16);
+                Outstr("Enter new password");
+                setCursor(0,24);
+                Outstr("by connecting dots");
+                setCursor(0,40);
+                Outstr("Press LAST to save");
+                setCursor(0,48);
+                Outstr("password");
+                setCursor(0,64);
                 Outstr("Press MUTE to exit");
-                delay(150);
+                delay(180);
                 showLockedInterface();
             }else if(data == B3)
             {
